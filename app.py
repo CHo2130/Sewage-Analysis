@@ -7,6 +7,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.chart import LineChart, BarChart, Reference
+from openpyxl.chart.axis import ChartLines
 from openpyxl.drawing.line import LineProperties
 from openpyxl.chart.shapes import GraphicalProperties
 from openpyxl.drawing.colors import ColorChoice
@@ -236,22 +237,25 @@ def _axis_line_props(color=AXIS_LINE_COLOR, w=9525):
     return GraphicalProperties(ln=LineProperties(solidFill=color, w=w))
 
 def style_axis(axis, title_text=None, title_size=1000, tick_size=1000,
-               number_format=None, show_gridlines=False):
+               number_format=None, show_minor_horizontal_gridlines=False):
     """축(가로/세로) 서식을 최종본과 동일하게: 옅은 회색 축선, Calibri 폰트, 그리드라인 제거"""
     if title_text:
         axis.title = _rich_title(title_text, size=title_size, bold=True)
-    axis.majorTickMark = "none"
+    # Excel chart elements: primary horizontal/vertical axes with outward ticks.
+    axis.majorTickMark = "out"
     axis.minorTickMark = "none"
+    axis.tickLblPos = "nextTo"
     axis.spPr = _axis_line_props()
     axis.txPr = _rich_txpr(size=tick_size, bold=False)
     if number_format:
         axis.number_format = number_format
-    if not show_gridlines:
-        axis.majorGridlines = None
+    # Use only the primary minor horizontal gridline on value axes.
+    axis.majorGridlines = None
+    axis.minorGridlines = ChartLines() if show_minor_horizontal_gridlines else None
 
 # 차트를 예쁘게 꾸며주는 유틸 함수 (최종 결과물과 동일한 서식: 제목/축/범례 폰트,
 # 옅은 테두리, 그리드라인 제거, 둥근 모서리 없음)
-def apply_beautiful_chart_style(chart, title_text=None, title_size=1800):
+def apply_beautiful_chart_style(chart, title_text=None, title_size=1400):
     # 차트 전체 테두리/배경
     chart.graphical_properties = GraphicalProperties(
         ln=LineProperties(solidFill=ColorChoice(srgbClr="D9D9D9"), round=True, w=9360)
@@ -275,7 +279,7 @@ def apply_beautiful_chart_style(chart, title_text=None, title_size=1800):
             chart.title = _rich_title(existing, size=title_size, bold=True)
 
     # 범례 서식
-    chart.legend.position = "r"
+    chart.legend.position = "b"
     chart.legend.overlay = False
     chart.legend.spPr = GraphicalProperties(noFill=True, ln=LineProperties(noFill=True))
     chart.legend.txPr = _rich_txpr(size=1000, bold=False)
@@ -285,7 +289,7 @@ def apply_beautiful_chart_style(chart, title_text=None, title_size=1800):
         style_axis(chart.x_axis, tick_size=1000)
     # y축(세로/값축) 서식
     if getattr(chart, "y_axis", None) is not None:
-        style_axis(chart.y_axis, tick_size=1000)
+        style_axis(chart.y_axis, tick_size=1000, show_minor_horizontal_gridlines=True)
 
 
 # =====================================================================
@@ -740,6 +744,7 @@ def build_workbook(master_df, sewage_raw_wbs, rain_raw, cfg, file_names, toc_con
     bar1.series[0].graphicalProperties.solidFill = "9DC3E6"
     bar1.series[0].graphicalProperties.line.noFill = True
     bar1.y_axis.axId = 200
+    bar1.y_axis.axPos = "r"
     bar1.y_axis.scaling.orientation = "maxMin"
     bar1.y_axis.crosses = "max"
     line1.y_axis.crosses = "autoZero"
