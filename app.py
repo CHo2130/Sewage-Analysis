@@ -7,16 +7,6 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.chart import LineChart, BarChart, Reference
-from openpyxl.chart.axis import ChartLines
-from openpyxl.drawing.line import LineProperties
-from openpyxl.chart.shapes import GraphicalProperties
-from openpyxl.drawing.colors import ColorChoice
-from openpyxl.chart.title import Title
-from openpyxl.chart.text import RichText, Text
-from openpyxl.drawing.text import (
-    Paragraph, ParagraphProperties, CharacterProperties,
-    Font as DrawingFont, RegularTextRun
-)
 
 # =====================================================================
 # 1. 엑셀 스타일 및 유틸 함수 모음
@@ -202,95 +192,6 @@ def note(ws, row, ncol, text):
     c = ws.cell(row=row, column=1, value=text)
     c.font = NOTE_FONT
     c.alignment = Alignment(horizontal="left", wrap_text=True)
-
-# =====================================================================
-# 차트 리치텍스트 서식 유틸 (제목/축/범례 폰트를 최종본과 동일하게)
-# =====================================================================
-CHART_FONT = "Calibri"
-AXIS_LINE_COLOR = "B3B3B3"
-
-def _char_props(size=1000, bold=False, color="000000", font=CHART_FONT):
-    return CharacterProperties(
-        sz=size, b=bold, spc=-1, strike="noStrike",
-        solidFill=color, latin=DrawingFont(typeface=font)
-    )
-
-def _rich_title(text, size=1400, bold=True, color="000000", font=CHART_FONT):
-    """제목/축제목용 Title 객체 (실제 텍스트 포함)"""
-    cp = _char_props(size, bold, color, font)
-    pp = ParagraphProperties(defRPr=cp)
-    run = RegularTextRun(rPr=cp, t=text)
-    para = Paragraph(pPr=pp, r=[run])
-    rich = RichText(p=[para])
-    t = Title(tx=Text(rich=rich))
-    t.overlay = False
-    t.spPr = GraphicalProperties(noFill=True, ln=LineProperties(noFill=True))
-    return t
-
-def _rich_txpr(size=1000, bold=False, color="000000", font=CHART_FONT):
-    """축 눈금라벨/범례 텍스트 서식용 RichText (텍스트 없이 기본 서식만)"""
-    cp = _char_props(size, bold, color, font)
-    pp = ParagraphProperties(defRPr=cp)
-    return RichText(p=[Paragraph(pPr=pp)])
-
-def _axis_line_props(color=AXIS_LINE_COLOR, w=9525):
-    return GraphicalProperties(ln=LineProperties(solidFill=color, w=w))
-
-def style_axis(axis, title_text=None, title_size=1000, tick_size=1000,
-               number_format=None, show_minor_horizontal_gridlines=False):
-    """축(가로/세로) 서식을 최종본과 동일하게: 옅은 회색 축선, Calibri 폰트, 그리드라인 제거"""
-    if title_text:
-        axis.title = _rich_title(title_text, size=title_size, bold=True)
-    # Excel chart elements: primary horizontal/vertical axes with outward ticks.
-    axis.majorTickMark = "out"
-    axis.minorTickMark = "none"
-    axis.tickLblPos = "nextTo"
-    axis.spPr = _axis_line_props()
-    axis.txPr = _rich_txpr(size=tick_size, bold=False)
-    if number_format:
-        axis.number_format = number_format
-    # Use only the primary minor horizontal gridline on value axes.
-    axis.majorGridlines = None
-    axis.minorGridlines = ChartLines() if show_minor_horizontal_gridlines else None
-
-# 차트를 예쁘게 꾸며주는 유틸 함수 (최종 결과물과 동일한 서식: 제목/축/범례 폰트,
-# 옅은 테두리, 그리드라인 제거, 둥근 모서리 없음)
-def apply_beautiful_chart_style(chart, title_text=None, title_size=1400):
-    # 차트 전체 테두리/배경
-    chart.graphical_properties = GraphicalProperties(
-        ln=LineProperties(solidFill=ColorChoice(srgbClr="D9D9D9"), round=True, w=9360)
-    )
-    chart.graphical_properties.solidFill = "FFFFFF"
-    try:
-        chart.roundedCorners = False
-    except Exception:
-        pass
-
-    # 제목 서식 (기존 문자열 제목이 있으면 리치텍스트로 치환)
-    if title_text is not None:
-        chart.title = _rich_title(title_text, size=title_size, bold=True)
-    elif chart.title is not None:
-        existing = None
-        try:
-            existing = chart.title.tx.rich.p[0].r[0].t
-        except Exception:
-            existing = None
-        if existing:
-            chart.title = _rich_title(existing, size=title_size, bold=True)
-
-    # 범례 서식
-    chart.legend.position = "b"
-    chart.legend.overlay = False
-    chart.legend.spPr = GraphicalProperties(noFill=True, ln=LineProperties(noFill=True))
-    chart.legend.txPr = _rich_txpr(size=1000, bold=False)
-
-    # x축(가로/카테고리축) 서식
-    if getattr(chart, "x_axis", None) is not None:
-        style_axis(chart.x_axis, tick_size=1000)
-    # y축(세로/값축) 서식
-    if getattr(chart, "y_axis", None) is not None:
-        style_axis(chart.y_axis, tick_size=1000, show_minor_horizontal_gridlines=True)
-
 
 # =====================================================================
 # 핵심: 워크북 생성 (분석 표, 차트 모두 포함)
@@ -702,16 +603,14 @@ def build_workbook(master_df, sewage_raw_wbs, rain_raw, cfg, file_names, toc_con
 
     chart5_anchor_row = r + 3
 
-    # ---------------- 아름다운 디자인의 차트 생성 ----------------
+    # ---------------- 차트 생성 (최종 승인본과 동일한 서식) ----------------
     cats = Reference(ws_i, min_col=1, min_row=2, max_row=LASTROW)
 
     year_range = f"({years[0]}~{years[-1]})" if len(years) > 1 else f"({years[0]})"
 
-    def style_series(s, color, width=6480, dash=None, no_line=False, marker=None, marker_size=4):
+    def style_series_line(s, color, width=9525, dash=None, no_line=False, marker=None, marker_size=4):
         s.graphicalProperties.line.solidFill = color
         s.graphicalProperties.line.width = width
-        s.graphicalProperties.line.cap = "rnd"
-        s.graphicalProperties.solidFill = color
         if dash: s.graphicalProperties.line.dashStyle = dash
         if no_line: s.graphicalProperties.line.noFill = True
         if marker:
@@ -723,15 +622,20 @@ def build_workbook(master_df, sewage_raw_wbs, rain_raw, cfg, file_names, toc_con
             s.marker.symbol = "none"
         s.smooth = False
 
-    # 차트1 (유입하수량 + 시설용량 + 강수량)
+    # 차트1 (유입하수량 + 시설용량 + 강수량) - 1_연도별_유입하수량
     line1 = LineChart()
+    line1.title = f"일별 유입하수량 및 시설용량·강수량 추이{year_range}"
+    line1.style = 2
     v_in = Reference(ws_i, min_col=6, min_row=1, max_row=LASTROW)
     v_cap = Reference(ws_i, min_col=13, min_row=1, max_row=LASTROW)
     line1.add_data(v_in, titles_from_data=True)
     line1.add_data(v_cap, titles_from_data=True)
     line1.set_categories(cats)
-    style_series(line1.series[0], "404040")
-    style_series(line1.series[1], "C00000", width=12700, dash="dash")
+    style_series_line(line1.series[0], color="404040", width=6350)
+    style_series_line(line1.series[1], color="C00000", width=12700, dash="dash")
+    line1.y_axis.title = "유입하수량(㎥/일)"
+    line1.y_axis.majorGridlines = None
+    line1.x_axis.title = "날짜"
     line1.x_axis.number_format = "yy-mm"
     line1.x_axis.majorTimeUnit = "months"
     line1.x_axis.tickLblSkip = 6
@@ -744,21 +648,20 @@ def build_workbook(master_df, sewage_raw_wbs, rain_raw, cfg, file_names, toc_con
     bar1.series[0].graphicalProperties.solidFill = "9DC3E6"
     bar1.series[0].graphicalProperties.line.noFill = True
     bar1.y_axis.axId = 200
-    bar1.y_axis.axPos = "r"
+    bar1.y_axis.title = "강수량(mm)"
     bar1.y_axis.scaling.orientation = "maxMin"
     bar1.y_axis.crosses = "max"
+    bar1.y_axis.majorGridlines = None
+
     line1.y_axis.crosses = "autoZero"
     line1 += bar1
-
-    apply_beautiful_chart_style(line1, title_text=f"일별 유입하수량 및 시설용량·강수량 추이{year_range}")
-    style_axis(line1.y_axis, title_text="유입하수량(㎥/일)")
-    style_axis(bar1.y_axis, title_text="강수량(mm)", number_format="#,##0.00")
     ws1.add_chart(line1, "A13")
 
-    # 차트4 (계절별 막대)
+    # 차트4 (계절별 막대) - 4_계절별_유입하수량
     bar4 = BarChart()
     bar4.type = "col"
     bar4.grouping = "clustered"
+    bar4.title = f"계절별 유입하수량 분석(전기간/우천일/강우영향일/청천일){year_range}"
     cats4 = Reference(ws4, min_col=8, min_row=4, max_row=7)
     data4 = Reference(ws4, min_col=9, max_col=13, min_row=3, max_row=7)
     bar4.add_data(data4, titles_from_data=True)
@@ -766,13 +669,15 @@ def build_workbook(master_df, sewage_raw_wbs, rain_raw, cfg, file_names, toc_con
     for s, col in zip(bar4.series, ["C00000", "1F4E78", "2E75B6", "9DC3E6", "D9D9D9"]):
         s.graphicalProperties.solidFill = col
         s.graphicalProperties.line.noFill = True
+    bar4.y_axis.title = "유입하수량(㎥/일)"
+    bar4.x_axis.title = "계절"
     bar4.height = 9; bar4.width = 20
-    apply_beautiful_chart_style(bar4, title_text=f"계절별 유입하수량 분석(전기간/우천일/강우영향일/청천일){year_range}")
-    style_axis(bar4.y_axis, title_text="유입하수량(㎥/일)")
     ws4.add_chart(bar4, "A" + str(rr + 2))
 
-    # 차트5 (유입수질)
+    # 차트5 (유입수질) - 5_유입수질
     line5 = LineChart()
+    line5.title = f"일별 유입수질(BOD·TOC·T-N) 변화 추이{year_range}"
+    line5.style = 2
     v_bod = Reference(ws_i, min_col=8, min_row=1, max_row=LASTROW)
     v_toc = Reference(ws_i, min_col=9, min_row=1, max_row=LASTROW)
     v_tn = Reference(ws_i, min_col=11, min_row=1, max_row=LASTROW)
@@ -780,15 +685,15 @@ def build_workbook(master_df, sewage_raw_wbs, rain_raw, cfg, file_names, toc_con
     line5.add_data(v_toc, titles_from_data=True)
     line5.add_data(v_tn, titles_from_data=True)
     line5.set_categories(cats)
-    style_series(line5.series[0], "C00000")
-    style_series(line5.series[1], "2E75B6")
-    style_series(line5.series[2], "70AD47")
+    style_series_line(line5.series[0], "C00000")
+    style_series_line(line5.series[1], "2E75B6")
+    style_series_line(line5.series[2], "70AD47")
+    line5.y_axis.title = "유입수질(㎎/L)"
+    line5.x_axis.title = "날짜"
     line5.x_axis.number_format = "yyyy-mm-dd"
     line5.x_axis.majorTimeUnit = "months"
     line5.x_axis.tickLblSkip = 6
     line5.height = 10; line5.width = 26
-    apply_beautiful_chart_style(line5, title_text=f"일별 유입수질(BOD·TOC·T-N) 변화 추이{year_range}")
-    style_axis(line5.y_axis, title_text="유입수질(㎎/L)")
     ws5.add_chart(line5, f"A{chart5_anchor_row}")
 
     # ---------------- 원본 데이터 시트 백업 ----------------
